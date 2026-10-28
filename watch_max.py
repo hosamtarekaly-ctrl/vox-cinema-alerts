@@ -221,16 +221,53 @@ def allowed_formats(day: date) -> tuple[str, ...]:
 
 
 def fetch(session: requests.Session, url: str) -> str:
-    response = session.get(url, timeout=25)
-    response.raise_for_status()
-    if urlparse(response.url).path.endswith("/showtimes"):
-        requested = parse_qs(urlparse(url).query).get("d", [])
-        returned = parse_qs(urlparse(response.url).query).get("d", [])
-        if requested and returned != requested:
-            raise ValueError(f"Showtimes date parameter lost in redirect: {response.url}")
-    if len(response.content) < 250:
-        raise ValueError("Unexpectedly short showtimes response")
-    return response.text
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        page_file = Path(tmp) / "vox_page.html"
+        command = [
+            "curl", "-L", "-f", "-sS",
+            "--connect-timeout", "10",
+            "--max-time", "25",
+            "-o", str(page_file),
+            "-w", "%{url_effective}",
+            url,
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise requests.RequestException(
+                f"VOX curl failed: {exc}"
+            ) from exc
+
+        if result.returncode != 0:
+            raise requests.RequestException(
+                f"VOX curl error: {result.stderr}"
+            )
+
+        final_url = result.stdout.strip()
+        if urlparse(final_url).path.endswith("/showtimes"):
+            requested = parse_qs(urlparse(url).query).get("d", [])
+            returned = parse_qs(urlparse(final_url).query).get("d", [])
+            if requested and returned != requested:
+                raise ValueError(
+                    f"Showtimes date lost in redirect: {final_url}"
+                )
+
+        content = page_file.read_bytes()
+        if len(content) < 250:
+            raise ValueError("Unexpectedly short VOX response")
+
+        return content.decode("utf-8", errors="replace")
+
 
 
 def previous_keys() -> set[str]:
