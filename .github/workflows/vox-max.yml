@@ -35,6 +35,13 @@ jobs:
         run: pip install -r requirements.txt
       - name: Test parsing logic
         run: python -m unittest discover -s tests -v
+      - name: Diagnose VOX connection
+        run: |
+          curl -L -sS -o /dev/null \
+            --connect-timeout 10 --max-time 20 \
+            -w 'HTTP=%{http_code} time=%{time_total}s\n' \
+            'https://egy.voxcinemas.com/showtimes/city-centre-almaza' || true
+
       - name: Check published VOX dates
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
