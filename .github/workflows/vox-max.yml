@@ -3,7 +3,7 @@ name: VOX Doomsday showtime watcher
 on:
   schedule:
     # Roughly every 15 min; scheduled GitHub jobs may be delayed or skipped.
-    - cron: '7,22,37,52 * * * *'
+    - cron: '9,24,39,54 * * * *'
   workflow_dispatch:
     inputs:
       mode:
