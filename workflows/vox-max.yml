@@ -1,0 +1,60 @@
+name: VOX Doomsday showtime watcher
+
+on:
+  schedule:
+    # Roughly every 15 min; scheduled GitHub jobs may be delayed or skipped.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Check or test notifications?'
+        type: choice
+        options:
+          - check
+          - dry-run
+          - test-telegram
+        default: check
+
+permissions:
+  contents: write  # Update last_seen.json to prevent duplicate alerts.
+
+concurrency:
+  group: vox-dates-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Test parsing logic
+        run: python -m unittest discover -s tests -v
+      - name: Check published VOX dates
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$MODE" = "test-telegram" ]; then
+            python watch_max.py --test-telegram
+          elif [ "$MODE" = "dry-run" ]; then
+            python watch_max.py --dry-run
+          else
+            python watch_max.py
+          fi
+      - name: Persist notified sessions
+        if: always()
+        run: |
+          git add last_seen.json
+          if ! git diff --staged --quiet; then
+            git -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m 'Update seen VOX showtimes'
+            git push
+          fi
